@@ -11,7 +11,7 @@ The graphics used in this demo are free and allowed to be modified.
 
 This is my first bigger Amiga coding project for a long time.. So.. Forgive.. The code is quite messy..
 
-I have included also an Amiga executable file (195208 bytes) in case the compiling fails from some reason..
+I have included also an Amiga executable file (195208 bytes) in case the compiling fails from some reason.. Some parts of the demo can be skipped with the left mousebutton.
 
 # Amiga system needed
 

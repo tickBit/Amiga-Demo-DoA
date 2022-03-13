@@ -17,6 +17,8 @@ I have included also an Amiga executable file (195208 bytes) in case the compili
 
 An AGA Amiga with probably 2mb CHIP Ram and some FAST ram + 68040 CPU.
 
+With emulation works fine with Amiga Forever with Workbench 3.x configured for 68040 CPU.
+
 A picture from the demo:
 
 ![DoA](https://user-images.githubusercontent.com/61118857/158078846-f898935f-8d35-4576-8aa6-7936b896ebb0.jpg)

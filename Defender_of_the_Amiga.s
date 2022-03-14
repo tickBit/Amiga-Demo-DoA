@@ -491,10 +491,6 @@ alkuScrollSil
 ksil    cmp.b   #1,(a0)
         beq.s   vaihda
 
-        bsr     LMB
-        cmp.b   #1,buttonreleased
-        beq.s   vaihda
-
         cmp.b   #0,(a0)
         beq.s   kesk
         addq.l  #1,d7
@@ -528,7 +524,7 @@ eka     sub.l   #32,d0
 toka    add.l   #192,d0
         
 
-goon   
+goon    
         
         bsr     drawLittleLetter
         bra.s   lsil
@@ -1037,40 +1033,8 @@ drawStretchLine
         moveq   #0,d7
 
 ksills  cmp.b   #2,(a0)
-        bne.s   gouon
+        beq.s   changeSID
 
-changeSID
-        movem.l d0-d6/a0-a6,-(sp)
-
-        BSR	mt_end
-	BSR	ResetCIAInt
-
-        move.l  sidbase,a6
-        jsr     _LVOAllocEmulResource(a6)
-        move.l  d0,emulrc
-
-        move.l  sidbase,a6
-        move.l  header,a0
-        move.l  sidfile,a1
-        moveq   #0,d0
-        move.w  size,d0
-        jsr     _LVOSetModule(a6)       
-
-        move.l  sidbase,a6
-        moveq   #0,d0
-        move.w  #50,d0
-        jsr     _LVOSetVertFreq(a6)
-
-        lea     channels,a1
-        jsr     _LVOSetChannelEnable(a6)
-
-        
-        move.l  sidbase,a6
-        moveq   #0,d0       ; tune
-        jsr     _LVOStartSong(a6)
-
-        movem.l (sp)+,d0-d6/a0-a6
-gouon   
         cmp.b   #1,(a0)
         bne.s   ei_viimeinenosa
         move.b  #1,vikaosa
@@ -1127,6 +1091,40 @@ sills   addq.l  #1,st_pointer
         move.b  #1,stretchi
         rts
 
+changeSID
+        BSR	mt_end
+	    BSR	ResetCIAInt
+
+        move.l  sidbase,a6
+        jsr     _LVOAllocEmulResource(a6)
+        move.l  d0,emulrc
+
+        move.l  sidbase,a6
+        move.l  header,a0
+        move.l  sidfile,a1
+        moveq   #0,d0
+        move.w  size,d0
+        jsr     _LVOSetModule(a6)       
+
+        move.l  sidbase,a6
+        moveq   #0,d0
+        move.w  #50,d0
+        jsr     _LVOSetVertFreq(a6)
+
+        lea     channels,a1
+        jsr     _LVOSetChannelEnable(a6)
+
+        
+        move.l  sidbase,a6
+        moveq   #0,d0       ; tune
+        jsr     _LVOStartSong(a6)
+
+skipSID
+
+        addq.l  #1,st_pointer
+        move.b  #1,stretchi
+
+        rts
 
 drawLittleLetter3
         move.l  screens,a2
@@ -2326,12 +2324,19 @@ CopperMovePart:
         move.l  #ModelCopper,$dff080
         tst.w   $dff088
 
+        move.l  #0,t_pointer
+        
         move.b  #0,vikaosa
         move.b  #0,lastPart
         move.b  #1,modelPart
 
         move.l  #32,fontw
         move.b  #2,which
+
+        move.l  #1536-1,d7
+        move.l  scrollarea,a0
+cscra   move.l  #0,(a0)+
+        dbf     d7,cscra
 
         fmove.x  #0,fp7                ;
         fmove.x  #3.14159265*180.0,fp1
@@ -4174,7 +4179,7 @@ chiprev         dc.b    0
 
 intuibase       dc.l    0
 gfxbase         dc.l    0
-dosbase		    dc.l    0
+dosbase		dc.l    0
 
 y_paikka        dc.l    0
 

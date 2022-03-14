@@ -17,9 +17,8 @@ I have included also an Amiga executable file (195208 bytes) in case the compili
 
 An AGA Amiga with probably 2mb CHIP ram and some FAST ram + 68040 CPU.
 
-With emulation the demo works fine with Amiga Forever with Workbench 3.x configured for 68040 CPU.
+With emulation the demo works fine with Amiga Forever with Workbench 3.x configured for 68040 CPU. Works fine with proper configuration on AmiKit, too.
 
-AmiKit: The demo doesn't seem to work if it's started from the shell, but if it is started from AmiKit's Workbench screen, it seems to work.
 
 A picture of the demo:
 

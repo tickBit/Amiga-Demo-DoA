@@ -4,9 +4,11 @@
 
 ; It's been long time since by so called active Amiga days.
 ; This is first bigger project after about 20 years of break...
-; ...so the code is quite messy
+; ...so the code is quite messy.. Forgive...
 ;
-; Forgive...
+; I have used public domain startup code I found on the internet.
+; It's better than my old code, that I found from some BBS in the old modem days...
+;
 ;
 
 
@@ -32,8 +34,16 @@
         include "graphics/gfxbase.i"
         include "exec/libraries.i"
         include "exec/execbase.i"
-        include "dos/dos.i"                
 
+	include "exec/types.i"
+	include "exec/nodes.i"
+	include "exec/ports.i"
+	include "exec/lists.i"
+	include "devices/input.i"
+	include "devices/inputevent.i"
+	include "graphics/gfxbase.i"
+	include "dos/dosextens.i"
+	include "dos/dos.i"
 
         include "include/libraries/playsid_lib.i"
         include "include/libraries/playsidbase.i"
@@ -49,14 +59,6 @@ W\@:    btst.w  #14,$dff002
 ;------------------------------------------------------------------------------
 ; Constants
 ;------------------------------------------------------------------------------
-Forbid         equ     -$0084
-Permit         equ     -$008a
-Disable        equ     -$0078
-Enable         equ     -$007e
-Write          equ     -$0030
-Output         equ     -$003c
-OpenLibrary    equ     -$0228
-CloseLibrary   equ     -$019e
 
 ;---- Playroutine ----
 
@@ -109,119 +111,155 @@ Execbase       equ      4
 
 NOCHIPREV      equ      0
 
+FROMC	EQU	0
+
+
+_LVODisable		EQU	-120
+_LVOEnable		EQU	-126
+_LVOForbid		EQU	-132
+_LVOPermit		EQU	-138
+_LVOFindTask		EQU	-294
+_LVOAllocSignal		EQU	-330
+_LVOFreeSignal		EQU	-336
+_LVOGetMsg		EQU	-372
+_LVOReplyMsg		EQU	-378
+_LVOWaitPort		EQU	-384
+_LVOCloseLibrary	EQU	-414
+_LVOOpenDevice		EQU	-444
+_LVOCloseDevice		EQU	-450
+_LVODoIO		EQU	-456
+_LVOOpenLibrary		EQU	-552
+
+_LVOLoadView		EQU	-222
+_LVOWaitBlit		EQU	-228
+_LVOWaitTOF		EQU	-270
+
 ;------------------------------------------------------------------------------
-; Startup code, works with AGA machnies. I found this back in the day somewhere
+; Startup code
 ;------------------------------------------------------------------------------
 
         SECTION CODE,code
 
-startup:
-        movem.l d0/a0,-(sp)             ; 
-        move.l  4,a6                    ; SysBase
-        move.l  #0,a1
-        jsr     -$0126(a6)              ; 
-        move.l  d0,a4
-        move.l  d0,process
-        tst.l   pr_CLI(a4)              ; CLI?
-                                        ; 
-        bne.s   check_aga               ; check_aga
-wb:
-        lea     pr_MsgPort(a4),a0       ; 
-                                        ; 
-        jsr     -$0180(a6)              ; 
-        lea     pr_MsgPort(a4),a0
-        jsr     -$0174(a6)              ; 
-                                        ; GetMsg()
-        move.l  d0,wbenchmsg            ; 
-                                        ; 
-check_aga:                              ; 
-        moveq   #0,d0                   ; 
-        lea     gfxname,a1
-        jsr     -$0228(a6)              ; OpenLibrary()
-        move.l  d0,gfxbase
-        beq.w   reply_to_wb             ; 
-        move.l  d0,a4
 
-        moveq   #0,d0
-        lea     intuiname,a1
-        jsr     -$0228(a6)
-        move.l  d0,intuibase
-        beq     Sulje
+_entry:
+	movem.l	d0/a0,_args
+	move.l	4.w,a6
+	moveq	#RETURN_FAIL,d7
 
-;        move.l  4,a6
-;        jsr     -$0078(a6)              ; Disable()
-        cmp.w   #39,LIB_VERSION(a4)     ; 
-                                        ; cmp.w #39,$14(a4)
-        bne.s   no_chiprev
+	; handle wb startup
+	sub.l	a1,a1
+	jsr	_LVOFindTask(a6)
+	move.l	d0,a2
+	tst.l	pr_CLI(a2)
+	bne.s	.iscli
+	lea	pr_MsgPort(a2),a0
+	jsr	_LVOWaitPort(a6)
+	lea	pr_MsgPort(a2),a0
+	jsr	_LVOGetMsg(a6)
+	move.l	d0,_WBenchMsg
+.iscli:
+	; init msgport
+	moveq	#-1,d0
+	jsr	_LVOAllocSignal(a6)
+	move.b	d0,_sigbit
+	bmi	.nosignal
+	move.l	a2,_sigtask
 
-        move.b  gb_ChipRevBits0(a4),chiprev
-                                        ; move.b $ec(a4),chiprev
-        bra.s   check_proc
-no_chiprev:
-        move.b  #NOCHIPREV,chiprev      ; 
-check_proc:
-        move.w  AttnFlags(a6),processor ; CPU and FPU
-                                        ; move.w $128(a6),processor
-clear_view:
-        move.l  gfxbase,a6
-        move.l  gb_ActiView(a6),oldview ; 
-                                        ; 
-        move.l  #0,a1                   ; 
-        jsr     -$00de(a6)              ; 
+	; hide possible requesters since user has no way to
+	; see or close them.
+	moveq	#-1,d0
+	move.l	pr_WindowPtr(a2),_oldwinptr
+	move.l	d0,pr_WindowPtr(a2)
 
-        jsr     -$010e(a6)
-        jsr     -$010e(a6)              ; WaitTOF()
+	; open input.device
+	lea	inputname(pc),a0
+	moveq	#0,d0
+	moveq	#0,d1
+	lea	_ioreq,a1
+	jsr	_LVOOpenDevice(a6)
+	tst.b	d0
+	bne	.noinput
 
-        move.l  4,a6                    ; 
-        movem.l (sp)+,d0/a0             ; 
-        bsr.s   _start                  ;
-        move.l  d0,-(sp)                ; 
-old_view:
-        move.l  gfxbase,a0
-        move.l  $26(a0),$dff080         ; Copperlistan palautus
+	; install inputhandler
+	lea	_ioreq,a1
+	move.w	#IND_ADDHANDLER,IO_COMMAND(a1)
+	move.l	#_ih_is,IO_DATA(a1)
+	jsr	_LVODoIO(a6)
 
-        move.l  gfxbase,a6
-        move.l  oldview,a1              ; old View
-        jsr     -$00de(a6)              ; LoadView()
-                                                                                                         
-;        move.l  4,a6
-;        jsr     -$007e(a6)              ; Enable()
-                                                                                                        
-        move.l  intuibase,a6
-        jsr     -$0186(a6)              ; RethinkDisplay()
+	; open graphics.library
+	lea	gfxname(pc),a1
+	moveq	#33,d0			; Kickstart 1.2 or higher
+	jsr	_LVOOpenLibrary(a6)
+	move.l	d0,_GfxBase
+	beq	.nogfx
+	move.l	d0,a6
 
-        move.l  4,a6
-        move.l  intuibase,a1
-        jsr     -$019e(a6)              ; CloseLibrary()
+	; save old view
+	move.l	gb_ActiView(a6),_oldview
 
-Sulje   move.l  4,a6
-        move.l  gfxbase,a1              ;
-        jsr     -$019e(a6)              ; CloseLibrary()
-                                                                                                         
-reply_to_wb:
-        tst.l   wbenchmsg               ; workbench?
-        beq.s   exit                    ; 
-        ;jsr     -$0084(a6)              ; 
-                                        ; Forbid()
-        move.l  wbenchmsg,a1
-        jsr     -$017a(a6)              ; ReplyMsg()
-exit:
-        move.l  (sp)+,d0
-        rts                             ; 
+	; flush view
+	sub.l	a1,a1
+	jsr	_LVOLoadView(a6)
+	jsr	_LVOWaitTOF(a6)
+	jsr	_LVOWaitTOF(a6)
 
+	; do the stuff
+	movem.l	_args,d0/a0
+	bsr	_main
+	move.l	d0,d7
 
-_start
+	move.l	_GfxBase,a6
+
+	; restore view & copper ptr
+	sub.l	a1,a1
+	jsr	_LVOLoadView(a6)
+	move.l	_oldview,a1
+	jsr	_LVOLoadView(a6)
+	move.l	gb_copinit(a6),$DFF080
+	jsr	_LVOWaitTOF(a6)
+	jsr	_LVOWaitTOF(a6)
+
+	; close graphics.library
+	move.l	a6,a1
+	move.l	4.w,a6
+	jsr	_LVOCloseLibrary(a6)
+
+.nogfx:
+	; remove inputhandler
+	lea	_ioreq,a1
+	move.w	#IND_REMHANDLER,IO_COMMAND(a1)
+	move.l	#_ih_is,IO_DATA(a1)
+	jsr	_LVODoIO(a6)
+
+	lea	_ioreq,a1
+	jsr	_LVOCloseDevice(a6)
+
+.noinput:
+	move.l	_sigtask,a0
+	move.l	_oldwinptr,pr_WindowPtr(a0)
+
+	moveq	#0,d0
+	move.b	_sigbit,d0
+	jsr	_LVOFreeSignal(a6)
+
+.nosignal:
+	move.l	_WBenchMsg,d0
+	beq.s	.notwb
+	move.l	a0,a1
+	jsr	_LVOForbid(a6)
+	jsr	_LVOReplyMsg(a6)
+
+.notwb:
+	move.l	d7,d0
+	rts
 
 ;------------------------------------------------------------------------------
 ; The program starts..
 ;------------------------------------------------------------------------------
+_main
+        
 
-        movem.l d0-d7/a0-a6,-(sp)
 
-        move.l  4,a6
-        jsr     Forbid(a6)
-
-       
 
                 lea     dosname,a1
                 moveq   #0,d0
@@ -360,9 +398,7 @@ _start
         jsr     -$00c6(a6)
         move.l  d0,modelBitmap
         beq     CleanUp
-        
-
-main	
+        	
 
         lea     $dff000,a5
 
@@ -387,10 +423,10 @@ main
         tst.w   $dff088                ; Own Copperlist on..
         
         BSR 	SetCIAInt
-	    BSR	mt_init
-	    ST	mt_Enable
+        BSR	mt_init
+	ST	mt_Enable
  
-        
+
         move.l  #Together,d0
         move.w  d0,low01
         swap    d0
@@ -444,9 +480,7 @@ main
         
 
         moveq   #0,d1
-        
-        
-        
+
 alkuScrollSil
         
         moveq   #0,d6
@@ -456,6 +490,11 @@ alkuScrollSil
 
 ksil    cmp.b   #1,(a0)
         beq.s   vaihda
+
+        bsr     LMB
+        cmp.b   #1,buttonreleased
+        beq.s   vaihda
+
         cmp.b   #0,(a0)
         beq.s   kesk
         addq.l  #1,d7
@@ -743,12 +782,7 @@ Freebitplane1
         move.l  modelBitmap,a1
         jsr     -$00d2(a6)
 
-Exit:   
-
-        move.l  4,a6
-        jsr     Permit(a6)
-
-        movem.l (sp)+,d0-d7/a0-a6
+Exit:  
         moveq   #0,d0
         rts
 
@@ -1003,8 +1037,40 @@ drawStretchLine
         moveq   #0,d7
 
 ksills  cmp.b   #2,(a0)
-        beq.s   changeSID
+        bne.s   gouon
 
+changeSID
+        movem.l d0-d6/a0-a6,-(sp)
+
+        BSR	mt_end
+	BSR	ResetCIAInt
+
+        move.l  sidbase,a6
+        jsr     _LVOAllocEmulResource(a6)
+        move.l  d0,emulrc
+
+        move.l  sidbase,a6
+        move.l  header,a0
+        move.l  sidfile,a1
+        moveq   #0,d0
+        move.w  size,d0
+        jsr     _LVOSetModule(a6)       
+
+        move.l  sidbase,a6
+        moveq   #0,d0
+        move.w  #50,d0
+        jsr     _LVOSetVertFreq(a6)
+
+        lea     channels,a1
+        jsr     _LVOSetChannelEnable(a6)
+
+        
+        move.l  sidbase,a6
+        moveq   #0,d0       ; tune
+        jsr     _LVOStartSong(a6)
+
+        movem.l (sp)+,d0-d6/a0-a6
+gouon   
         cmp.b   #1,(a0)
         bne.s   ei_viimeinenosa
         move.b  #1,vikaosa
@@ -1059,41 +1125,6 @@ sills   addq.l  #1,st_pointer
         bsr     WaitForBeam
 
         move.b  #1,stretchi
-        rts
-
-changeSID
-        BSR	mt_end
-	    BSR	ResetCIAInt
-
-        move.l  sidbase,a6
-        jsr     _LVOAllocEmulResource(a6)
-        move.l  d0,emulrc
-
-        move.l  sidbase,a6
-        move.l  header,a0
-        move.l  sidfile,a1
-        moveq   #0,d0
-        move.w  size,d0
-        jsr     _LVOSetModule(a6)       
-
-        move.l  sidbase,a6
-        moveq   #0,d0
-        move.w  #50,d0
-        jsr     _LVOSetVertFreq(a6)
-
-        lea     channels,a1
-        jsr     _LVOSetChannelEnable(a6)
-
-        
-        move.l  sidbase,a6
-        moveq   #0,d0       ; tune
-        jsr     _LVOStartSong(a6)
-
-skipSID
-
-        addq.l  #1,st_pointer
-        move.b  #1,stretchi
-
         rts
 
 
@@ -3840,8 +3871,12 @@ CIAAname	dc.b "ciaa.resource",0
 filename        dc.b     "arpo4",0
 
 
+inputname:
+	dc.b	'input.device',0
+gfxname:
+	dc.b	'graphics.library',0
+
 sidnimi         dc.b    "playsid.library",0
-gfxname         dc.b    "graphics.library",0
 intuiname       dc.b    "intuition.library",0
 dosname		dc.b    "dos.library",0
 
@@ -4012,6 +4047,69 @@ endtext         dc.b    "What have we seen here?",0
         section variables,DATA
 
 
+_args:
+	dc.l	0,0
+_oldwinptr:
+	dc.l	0
+_WBenchMsg:
+	dc.l	0
+_GfxBase:
+	dc.l	0
+_oldview:
+	dc.l	0
+
+_msgport:
+	dc.l	0,0		; LN_SUCC, LN_PRED
+	dc.b	NT_MSGPORT,0	; LN_TYPE, LN_PRI
+	dc.l	0		; LN_NAME
+	dc.b	PA_SIGNAL	; MP_FLAGS
+_sigbit:
+	dc.b	-1		; MP_SIGBIT
+_sigtask:
+	dc.l	0		; MP_SIGTASK
+.head:
+	dc.l	.tail		; MLH_HEAD
+.tail:
+	dc.l	0		; MLH_TAIL
+	dc.l	.head		; MLH_TAILPRED
+
+_ioreq:
+	dc.l	0,0		; LN_SUCC, LN_PRED
+	dc.b	NT_REPLYMSG,0	; LN_TYPE, LN_PRI
+	dc.l	0		; LN_NAME
+	dc.l	_msgport	; MN_REPLYPORT
+	dc.w	IOSTD_SIZE	; MN_LENGTH
+	dc.l	0		; IO_DEVICE
+	dc.l	0		; IO_UNIT
+	dc.w	0		; IO_COMMAND
+	dc.b	0,0		; IO_FLAGS, IO_ERROR
+	dc.l	0		; IO_ACTUAL
+	dc.l	0		; IO_LENGTH
+	dc.l	0		; IO_DATA
+	dc.l	0		; IO_OFFSET
+
+_ih_is:
+	dc.l	0,0		; LN_SUCC, LN_PRED
+	dc.b	NT_INTERRUPT,127	; LN_TYPE, LN_PRI ** highest priority ** 
+	dc.l	.ih_name	; LN_NAME
+	dc.l	0		; IS_DATA
+	dc.l	.ih_code	; IS_CODE
+
+.ih_code:
+	move.l	a0,d0
+.loop:
+	move.b	#IECLASS_NULL,ie_Class(a0)
+	move.l	(a0),a0
+	move.l	a0,d1
+	bne.b	.loop
+
+	; d0 is the original a0
+	rts
+
+.ih_name:
+	dc.b	'eat-events inputhandler',0
+
+	CNOP	0,4
 
 RealTempo	    dc.w 125
 CIAAaddr	    dc.l 0

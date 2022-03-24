@@ -1,5 +1,5 @@
 # Amiga Demo: Defender of the Amiga
-This little demo was supposed to be my entry to Instanssi 2022 demo competition, but the event was canceled.
+This little demo is my entry to Instanssi 2022 demo competition.
 
 The playsid.library and the includes related to it are from the following package:
 https://aminet.net/package/mus/play/PlaySID3

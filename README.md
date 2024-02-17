@@ -1,6 +1,6 @@
 # Amiga Demo: Defender of the Amiga
 
-This little demo was supposed to be my entry to Instanssi 2022 demo competition.
+This little demo was supposed to be my entry to Instanssi 2022 demo competition. Because of COVID-19, the event became bigger than just a local event. That is why I did not parcipiate.
 
 You'll need the following package from Aminet to compile:
 https://aminet.net/package/mus/play/PlaySID3
